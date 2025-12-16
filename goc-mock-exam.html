@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GMDSS GOC — Random 60Q / 60min Mock Exam</title>
+  <style>
+    :root { font-family: -apple-system, system-ui, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; background:#0b0f14; color:#e8eef6; }
+    header { padding: 16px 18px; border-bottom: 1px solid #1f2a37; background:#0e141c; position: sticky; top:0; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    .pill { padding: 8px 10px; border: 1px solid #273244; border-radius: 999px; background:#0b1119; }
+    .btn { cursor:pointer; border:1px solid #2b3850; background:#111a26; color:#e8eef6; padding:10px 12px; border-radius:10px; }
+    .btn:hover { background:#162234; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    main { max-width: 980px; margin: 0 auto; padding: 18px; }
+    .card { border:1px solid #253246; background:#0e141c; border-radius:14px; padding: 14px; margin: 12px 0; }
+    .qhead { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .qnum { font-weight:700; }
+    .qtext { font-size: 16px; line-height: 1.35; margin-top: 8px; }
+    .opts { margin-top: 10px; display:grid; gap:8px; }
+    label.opt { display:flex; gap:10px; align-items:flex-start; padding:10px; border:1px solid #223049; border-radius:12px; background:#0b1119; cursor:pointer;}
+    label.opt:hover { background:#101a28; }
+    input[type="radio"] { margin-top:3px; }
+    .muted { opacity:.8; font-size: 13px; }
+    .ok { color:#64d37b; }
+    .bad { color:#ff6b6b; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width: 760px){ .grid2{ grid-template-columns:1fr; } }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .small { font-size: 12px; }
+    .footer { opacity:.7; margin-top: 16px; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <div class="pill"><b>GMDSS GOC</b> — Random 60Q / 60min</div>
+    <div class="pill mono" id="timer">60:00</div>
+    <div class="pill" id="status">Not started</div>
+
+    <button class="btn" id="btnStart">Start new exam</button>
+    <button class="btn" id="btnSubmit" disabled>Submit</button>
+    <button class="btn" id="btnReset" disabled>Reset</button>
+
+    <label class="btn" style="display:inline-flex; gap:8px; align-items:center;">
+      Load Question Bank (JSON)
+      <input id="fileInput" type="file" accept="application/json" style="display:none;" />
+    </label>
+    <button class="btn" id="btnExport">Export current bank</button>
+  </div>
+  <div class="muted" style="margin-top:8px;">
+    ✅ Every “Start” builds a different 60-question test from the bank. Timer is 60 minutes.
+  </div>
+</header>
+
+<main>
+  <div class="grid2">
+    <div class="card">
+      <div><b>How it works</b></div>
+      <ul class="muted">
+        <li>Question pool is stored in the code (demo bank included).</li>
+        <li>You can load your full bank as a <span class="mono">.json</span> file (recommended).</li>
+        <li>After submit: you get score + correct answers shown.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div><b>JSON format</b> (for “all questions”)</div>
+      <div class="muted small mono">
+        [{"id":"Q001","q":"Question text","choices":["A..","B..","C..","D.."],"answerIndex":2,"topic":"NAVTEX"}, ...]
+      </div>
+      <div class="muted" style="margin-top:8px;">
+        If you want, upload the original Excel (or a clean text export) and I can convert the full bank into JSON for you.
+      </div>
+    </div>
+  </div>
+
+  <div id="exam"></div>
+
+  <div class="card" id="results" style="display:none;"></div>
+
+  <div class="footer muted">
+    Source bank: your uploaded GOC question bank PDF. :contentReference[oaicite:1]{index=1}
+  </div>
+</main>
+
+<script>
+/** ========= 1) QUESTION BANK (DEMO) =========
+ * Replace/extend by loading JSON via the button.
+ * answerIndex is 0..3 (A..D).
+ */
+let BANK = [
+  // Sea areas / concept
+  {id:"D001", topic:"GMDSS", q:"The primary purpose of the GMDSS is:", choices:[
+    "Allow more effective control of SAR situations by vessels",
+    "Automate and improve emergency communications for the world’s shipping industry",
+    "Provide more effective but lower cost commercial communications",
+    "Provide compulsory vessels with collision avoidance"
+  ], answerIndex:1},
+
+  {id:"D002", topic:"Sea areas", q:"GMDSS Sea Area A1 is best defined as being an area within:", choices:[
+    "MF radiotelephony range of at least one coast station providing continuous MF DSC alerting",
+    "Approximately 30 to 50 miles from the coast",
+    "VHF radiotelephony range of at least one coast station maintaining continuous VHF DSC watch",
+    "Coverage of the Inmarsat geostationary satellite system"
+  ], answerIndex:2},
+
+  {id:"D003", topic:"SART/EPIRB", q:"During SAR operations, a Search and Rescue Transponder (SART) would be triggered by transmission of:", choices:[
+    "S-Band radar",
+    "EPIRB",
+    "X-Band radar",
+    "AIS"
+  ], answerIndex:2},
+
+  {id:"D004", topic:"NAVTEX", q:"NAVTEX transmissions in simple English are sent on:", choices:[
+    "518 kHz, FEC mode",
+    "500 kHz, SELFEC mode",
+    "490 kHz, ARQ mode",
+    "None of these"
+  ], answerIndex:0},
+
+  {id:"D005", topic:"Inmarsat", q:"What is meant by “CES”?", choices:[
+    "Coast Earth Service",
+    "Coast Earth Station",
+    "Central Equatorial Station",
+    "Coastal Equivalent Station"
+  ], answerIndex:1},
+
+  {id:"D006", topic:"Inmarsat", q:"What is usually the first step for a GMDSS Radio Operator to take when initiating a distress priority message via Inmarsat?", choices:[
+    "By dialing the correct code on the telephone remote unit",
+    "By pressing a “Distress Button” or “Distress Hot Key(s)” on the equipment",
+    "By contacting the CES operator and announcing a distress condition is in existence",
+    "By contacting the CES operator using the radiotelephone distress procedure “Mayday”"
+  ], answerIndex:1},
+
+  {id:"D007", topic:"Watchkeeping", q:"The time entered in the GMDSS radio logbook should be:", choices:[
+    "UTC",
+    "Zone time",
+    "Local time",
+    "Ship’s time"
+  ], answerIndex:0},
+
+  {id:"D008", topic:"VHF/DSC", q:"The VHF RT channel to be used for inter-ship Safety of Navigation is:", choices:[
+    "Ch.70",
+    "Ch.13",
+    "Ch.16",
+    "Ch.06"
+  ], answerIndex:1},
+
+  {id:"D009", topic:"Frequencies", q:"Which of the following is the frequency range for HF?", choices:[
+    "3–30 MHz",
+    "300–3000 kHz",
+    "30–300 MHz",
+    "10–30 MHz"
+  ], answerIndex:0},
+
+  {id:"D010", topic:"Emission", q:"What is the emission designation for VHF-FM?", choices:[
+    "F3C",
+    "J2B",
+    "F3E",
+    "G2B"
+  ], answerIndex:2},
+
+  // Add more demo questions (you can load a full JSON bank later)
+];
+
+// ======= 2) EXAM ENGINE =======
+const EXAM_SIZE = 60;
+const EXAM_SECONDS = 60 * 60;
+
+let examQuestions = [];
+let answers = new Map(); // id -> selectedIndex
+let started = false;
+let submitted = false;
+let remaining = EXAM_SECONDS;
+let tickHandle = null;
+
+const elTimer = document.getElementById("timer");
+const elStatus = document.getElementById("status");
+const elExam = document.getElementById("exam");
+const elResults = document.getElementById("results");
+const btnStart = document.getElementById("btnStart");
+const btnSubmit = document.getElementById("btnSubmit");
+const btnReset = document.getElementById("btnReset");
+const fileInput = document.getElementById("fileInput");
+const btnExport = document.getElementById("btnExport");
+
+function shuffle(arr){
+  const a = arr.slice();
+  for (let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+function pickExamQuestions(){
+  if (BANK.length < EXAM_SIZE) {
+    throw new Error(`Question bank has only ${BANK.length} questions. Need at least ${EXAM_SIZE}. Load a bigger JSON bank.`);
+  }
+  return shuffle(BANK).slice(0, EXAM_SIZE);
+}
+
+function fmtTime(sec){
+  const m = Math.floor(sec/60);
+  const s = sec%60;
+  return String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
+}
+
+function setStatus(text){
+  elStatus.textContent = text;
+}
+
+function renderExam(){
+  elExam.innerHTML = "";
+  examQuestions.forEach((qq, idx) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    const selected = answers.get(qq.id);
+
+    card.innerHTML = `
+      <div class="qhead">
+        <div>
+          <div class="qnum">Q${idx+1} <span class="muted">(${qq.topic||"General"})</span></div>
+          <div class="qtext">${escapeHtml(qq.q)}</div>
+        </div>
+        <div class="muted mono">ID: ${qq.id}</div>
+      </div>
+      <div class="opts">
+        ${qq.choices.map((c,i)=>`
+          <label class="opt">
+            <input type="radio" name="${qq.id}" value="${i}" ${selected===i?"checked":""} ${submitted?"disabled":""}/>
+            <div><b>${String.fromCharCode(65+i)}.</b> ${escapeHtml(c)}</div>
+          </label>
+        `).join("")}
+      </div>
+    `;
+
+    card.addEventListener("change", (e)=>{
+      if (!started || submitted) return;
+      const t = e.target;
+      if (t && t.name === qq.id){
+        answers.set(qq.id, Number(t.value));
+      }
+    });
+
+    elExam.appendChild(card);
+  });
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, (m)=>({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[m]));
+}
+
+function startTimer(){
+  clearInterval(tickHandle);
+  tickHandle = setInterval(()=>{
+    if (!started || submitted) return;
+    remaining--;
+    elTimer.textContent = fmtTime(remaining);
+    if (remaining <= 0){
+      remaining = 0;
+      elTimer.textContent = "00:00";
+      submitExam(true);
+    }
+  }, 1000);
+}
+
+function startExam(){
+  submitted = false;
+  started = true;
+  remaining = EXAM_SECONDS;
+  elTimer.textContent = fmtTime(remaining);
+  answers = new Map();
+  elResults.style.display = "none";
+  setStatus("In progress");
+  examQuestions = pickExamQuestions();
+  renderExam();
+  btnSubmit.disabled = false;
+  btnReset.disabled = false;
+  startTimer();
+}
+
+function submitExam(auto=false){
+  if (submitted) return;
+  submitted = true;
+  setStatus(auto ? "Time! Submitted" : "Submitted");
+  btnSubmit.disabled = true;
+
+  // score
+  let correct = 0;
+  let answered = 0;
+
+  const detail = examQuestions.map((qq, idx)=>{
+    const pick = answers.get(qq.id);
+    const isAnswered = (pick !== undefined);
+    if (isAnswered) answered++;
+    const ok = (pick === qq.answerIndex);
+    if (ok) correct++;
+    return { idx: idx+1, qq, pick, ok, isAnswered };
+  });
+
+  // show results summary
+  const pct = Math.round((correct / examQuestions.length) * 100);
+  elResults.style.display = "block";
+  elResults.innerHTML = `
+    <div class="row" style="justify-content:space-between;">
+      <div>
+        <div style="font-size:18px;"><b>Result:</b> <span class="${pct>=80?"ok":(pct>=60?"":"bad")}">${correct}/${examQuestions.length} (${pct}%)</span></div>
+        <div class="muted">Answered: ${answered}/${examQuestions.length} • Unanswered: ${examQuestions.length-answered}</div>
+      </div>
+      <div class="mono">Time left: ${fmtTime(remaining)}</div>
+    </div>
+    <hr style="border:none;border-top:1px solid #223049;margin:12px 0;">
+    <div class="muted"><b>Review</b> (correct answer shown):</div>
+    ${detail.map(d=>{
+      const rightLetter = String.fromCharCode(65 + d.qq.answerIndex);
+      const pickLetter = (d.pick===undefined) ? "—" : String.fromCharCode(65 + d.pick);
+      return `
+        <div style="margin-top:10px; padding:10px; border:1px solid #223049; border-radius:12px; background:#0b1119;">
+          <div><b>Q${d.idx}.</b> ${escapeHtml(d.qq.q)}</div>
+          <div class="muted">Your answer: <b class="${d.ok?"ok":"bad"}">${pickLetter}</b> • Correct: <b class="ok">${rightLetter}</b></div>
+        </div>
+      `;
+    }).join("")}
+  `;
+
+  renderExam(); // rerender with disabled radios
+}
+
+function resetAll(){
+  clearInterval(tickHandle);
+  started = false;
+  submitted = false;
+  remaining = EXAM_SECONDS;
+  elTimer.textContent = "60:00";
+  setStatus("Not started");
+  elExam.innerHTML = "";
+  elResults.style.display = "none";
+  btnSubmit.disabled = true;
+  btnReset.disabled = true;
+}
+
+btnStart.addEventListener("click", ()=>{
+  try { startExam(); }
+  catch (e){ alert(e.message); }
+});
+
+btnSubmit.addEventListener("click", ()=> submitExam(false));
+btnReset.addEventListener("click", resetAll);
+
+fileInput.addEventListener("change", async (e)=>{
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  try{
+    const text = await file.text();
+    const data = JSON.parse(text);
+    // basic validation
+    if (!Array.isArray(data)) throw new Error("JSON must be an array of questions.");
+    for (const q of data){
+      if (!q.id || !q.q || !Array.isArray(q.choices) || q.choices.length!==4 || typeof q.answerIndex!=="number"){
+        throw new Error("Invalid question format. Each item must have: id, q, choices[4], answerIndex (0..3).");
+      }
+    }
+    BANK = data;
+    alert(`Loaded question bank: ${BANK.length} questions.`);
+    resetAll();
+  } catch(err){
+    alert("Failed to load JSON: " + err.message);
+  } finally{
+    e.target.value = "";
+  }
+});
+
+btnExport.addEventListener("click", ()=>{
+  const blob = new Blob([JSON.stringify(BANK, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "goc-question-bank.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+// initial UI
+resetAll();
+</script>
+</body>
+</html>
